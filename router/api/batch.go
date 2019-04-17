@@ -20,7 +20,7 @@ type Request struct {
 }
 
 type body struct {
-	Requests []Request `json:"requests" binding:"required,dive"`
+	Requests []Request `json:"requests" binding:"required,gt=0,dive"`
 }
 
 //HandleBatch is a handler for POST /batch/
@@ -31,9 +31,6 @@ func HandleBatch(c *gin.Context) {
 		return
 	}
 	requests := body.Requests
-	if len(requests) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Should have at least one request"})
-	}
 	for _, req := range requests {
 		fmt.Println(req)
 	}
