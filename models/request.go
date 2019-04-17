@@ -10,4 +10,5 @@ type Request struct {
 	Concurrency  uint8       `json:"concurrency"`
 	Retries      uint8       `json:"retries"`
 	Timeout      uint        `json:"timeout"`
+	Weight       int
 }

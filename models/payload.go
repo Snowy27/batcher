@@ -11,22 +11,59 @@ type Payload struct {
 }
 
 type WeightedRequest struct {
-	Weight int
-	Name   string
+	Weight  int
+	Request Request
 }
 
 //Execute the batched requests
 func (payload *Payload) Execute() {
-	listeners := make(map[string][]chan int)
-	senders := make(map[string][]chan int)
-	requestsByName := make(map[string]Request)
-	for _, req := range payload.Requests {
-		requestsByName[req.Name] = req
+	ch := calculateWeights(payload.Requests)
+	maxWeight := 1
+	weightedRequests := make([]WeightedRequest, 0, len(payload.Requests))
+	for requestWeight := range ch {
+		weightedRequests = append(weightedRequests, requestWeight)
+		if maxWeight < requestWeight.Weight {
+			maxWeight = requestWeight.Weight
+		}
+	}
+	fmt.Println(weightedRequests)
+}
+
+func calculateWeights(requests []Request) <-chan WeightedRequest {
+	listeners, senders := createListenersAndSenders(requests)
+	weightChannels := make([]<-chan WeightedRequest, 0)
+
+	for _, request := range requests {
+		weightChannel := make(chan WeightedRequest)
+		weightChannels = append(weightChannels, weightChannel)
+		go func(request Request) {
+
+			weight := 1
+			for _, listenerChannel := range listeners[request.Name] {
+				weight += <-listenerChannel
+			}
+			for _, senderChannel := range senders[request.Name] {
+				senderChannel <- weight
+				close(senderChannel)
+			}
+			weightChannel <- WeightedRequest{Request: request, Weight: weight}
+			close(weightChannel)
+
+		}(request)
+	}
+
+	return merge(weightChannels)
+}
+
+func createListenersAndSenders(requests []Request) (map[string][]<-chan int, map[string][]chan<- int) {
+	listeners := make(map[string][]<-chan int)
+	senders := make(map[string][]chan<- int)
+	for _, req := range requests {
 		if _, ok := listeners[req.Name]; !ok {
-			listeners[req.Name] = make([]chan int, 0)
+			listeners[req.Name] = make([]<-chan int, 0)
 		}
 		if _, ok := senders[req.Name]; !ok {
-			senders[req.Name] = make([]chan int, 0)
+			senders[req.Name] = make([]chan<- int, 0)
 		}
 		for _, dependency := range req.Dependencies {
 			ch := make(chan int)
@@ -34,39 +71,7 @@ func (payload *Payload) Execute() {
 			senders[dependency] = append(senders[dependency], ch)
 		}
 	}
-	result := calculateWeights(requestsByName, senders, listeners)
-	fmt.Println(result)
-}
-
-func calculateWeights(requestsByName map[string]Request, senders, listeners map[string][]chan int) map[string]int {
-	weights := make(map[string]int)
-	weightChannels := make([]<-chan WeightedRequest, 0)
-	for name := range requestsByName {
-		weightChannel := make(chan WeightedRequest)
-		weightChannels = append(weightChannels, weightChannel)
-		go func(name string) {
-			fmt.Println("Starting routine for ", name)
-			weight := 1
-			for _, listenerChannel := range listeners[name] {
-				fmt.Println("Waiting on ", name)
-				weight += <-listenerChannel
-			}
-			for _, senderChannel := range senders[name] {
-				fmt.Println("Sending the ", name)
-				senderChannel <- weight
-				close(senderChannel)
-			}
-			weightChannel <- WeightedRequest{Name: name, Weight: weight}
-			close(weightChannel)
-		}(name)
-	}
-
-	mergedChannel := merge(weightChannels)
-
-	for weight := range mergedChannel {
-		weights[weight.Name] = weight.Weight
-	}
-	return weights
+	return listeners, senders
 }
 
 func merge(cs []<-chan WeightedRequest) <-chan WeightedRequest {
