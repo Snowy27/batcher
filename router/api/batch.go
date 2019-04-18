@@ -15,5 +15,6 @@ func HandleBatch(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	payload.Execute()
+	results := payload.Execute()
+	c.JSON(200, results)
 }

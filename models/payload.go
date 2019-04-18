@@ -1,7 +1,6 @@
 package models
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -10,81 +9,44 @@ type Payload struct {
 	Requests []Request `json:"requests" binding:"required,gt=0,dive"`
 }
 
-type WeightedRequest struct {
-	Weight  int
-	Request Request
-}
-
 //Execute the batched requests
-func (payload *Payload) Execute() {
-	requestsByWeight, maxWeight := calculateRequestsByWeightAndMaxWeight(payload.Requests)
-	fmt.Println(requestsByWeight)
-	fmt.Println(maxWeight)
-}
+func (payload *Payload) Execute() map[string]Result {
+	listeners, senders := createListenersAndSenders(payload.Requests)
+	resultChannels := make([]<-chan Result, 0, len(payload.Requests))
 
-func calculateRequestsByWeightAndMaxWeight(requests []Request) (map[int][]Request, int) {
-	weights := createWeightsChannel(requests)
-
-	requestsByWeight := make(map[int][]Request)
-	maxWeight := 1
-	for weight := range weights {
-		if _, ok := requestsByWeight[weight.Weight]; !ok {
-			requestsByWeight[weight.Weight] = make([]Request, 0)
-		}
-		requestsByWeight[weight.Weight] = append(requestsByWeight[weight.Weight], weight.Request)
-
-		if maxWeight < weight.Weight {
-			maxWeight = weight.Weight
-		}
-	}
-	return requestsByWeight, maxWeight
-}
-
-func createWeightsChannel(requests []Request) <-chan WeightedRequest {
-	listeners, senders := createListenersAndSenders(requests)
-	weights := make([]<-chan WeightedRequest, 0)
-
-	for _, request := range requests {
-		weightChannel := make(chan WeightedRequest)
-		weights = append(weights, weightChannel)
-		go func(request Request) {
-
-			weight := 1
-			for _, listenerChannel := range listeners[request.Name] {
-				weight += <-listenerChannel
-			}
-
-			for _, senderChannel := range senders[request.Name] {
-				senderChannel <- weight
-				close(senderChannel)
-			}
-
-			weightChannel <- WeightedRequest{Request: request, Weight: weight}
-			close(weightChannel)
-
-		}(request)
+	for _, request := range payload.Requests {
+		resultChannel := request.Execute(listeners[request.Name], senders[request.Name])
+		resultChannels = append(resultChannels, resultChannel)
 	}
 
-	return merge(weights)
+	mergedResultsChannel := merge(resultChannels)
+	results := make(map[string]Result)
+
+	for result := range mergedResultsChannel {
+		results[result.Name] = result
+	}
+
+	return results
+
 }
 
-func createListenersAndSenders(requests []Request) (map[string][]<-chan int, map[string][]chan<- int) {
+func createListenersAndSenders(requests []Request) (map[string][]<-chan Result, map[string][]chan<- Result) {
 	//TODO: figure out circular dependencies
-	listeners := make(map[string][]<-chan int)
-	senders := make(map[string][]chan<- int)
+	listeners := make(map[string][]<-chan Result)
+	senders := make(map[string][]chan<- Result)
 
 	for _, req := range requests {
 		if _, ok := listeners[req.Name]; !ok {
-			listeners[req.Name] = make([]<-chan int, 0)
+			listeners[req.Name] = make([]<-chan Result, 0)
 		}
 
 		if _, ok := senders[req.Name]; !ok {
-			senders[req.Name] = make([]chan<- int, 0)
+			senders[req.Name] = make([]chan<- Result, 0)
 		}
 
 		for _, dependency := range req.Dependencies {
 			//TODO: figure out case where dependency is not present
-			ch := make(chan int)
+			ch := make(chan Result)
 			listeners[req.Name] = append(listeners[req.Name], ch)
 			senders[dependency] = append(senders[dependency], ch)
 		}
@@ -93,13 +55,13 @@ func createListenersAndSenders(requests []Request) (map[string][]<-chan int, map
 	return listeners, senders
 }
 
-func merge(cs []<-chan WeightedRequest) <-chan WeightedRequest {
+func merge(cs []<-chan Result) <-chan Result {
 	var wg sync.WaitGroup
-	out := make(chan WeightedRequest)
+	out := make(chan Result)
 
 	// Start an output goroutine for each input channel in cs.  output
 	// copies values from c to out until c is closed, then calls wg.Done.
-	output := func(c <-chan WeightedRequest) {
+	output := func(c <-chan Result) {
 		for n := range c {
 			out <- n
 		}
