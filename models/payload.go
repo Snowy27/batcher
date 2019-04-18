@@ -10,43 +10,48 @@ type Payload struct {
 }
 
 //Execute the batched requests
-func (payload *Payload) Execute() map[string]Result {
+func (payload *Payload) Execute() map[string]interface{} {
 	listeners, senders := createListenersAndSenders(payload.Requests)
-	resultChannels := make([]<-chan Result, 0, len(payload.Requests))
+	responseChannels := make([]<-chan Response, 0, len(payload.Requests))
 
 	for _, request := range payload.Requests {
-		resultChannel := request.Execute(listeners[request.Name], senders[request.Name])
-		resultChannels = append(resultChannels, resultChannel)
+		responseChannel := request.Execute(listeners[request.Name], senders[request.Name])
+		responseChannels = append(responseChannels, responseChannel)
 	}
 
-	mergedResultsChannel := merge(resultChannels)
-	results := make(map[string]Result)
+	mergedResponsesChannel := merge(responseChannels)
+	responses := make(map[string]interface{})
 
-	for result := range mergedResultsChannel {
-		results[result.Name] = result
+	for response := range mergedResponsesChannel {
+		result, err := response.ProvideResult()
+		if err != nil {
+			responses[result.Name] = map[string]string{"Error": err.Error()}
+		} else {
+			responses[result.Name] = map[string]string{"Result": result.Body}
+		}
 	}
 
-	return results
+	return responses
 
 }
 
-func createListenersAndSenders(requests []Request) (map[string][]<-chan Result, map[string][]chan<- Result) {
+func createListenersAndSenders(requests []Request) (map[string][]<-chan Response, map[string][]chan<- Response) {
 	//TODO: figure out circular dependencies
-	listeners := make(map[string][]<-chan Result)
-	senders := make(map[string][]chan<- Result)
+	listeners := make(map[string][]<-chan Response)
+	senders := make(map[string][]chan<- Response)
 
 	for _, req := range requests {
 		if _, ok := listeners[req.Name]; !ok {
-			listeners[req.Name] = make([]<-chan Result, 0)
+			listeners[req.Name] = make([]<-chan Response, 0)
 		}
 
 		if _, ok := senders[req.Name]; !ok {
-			senders[req.Name] = make([]chan<- Result, 0)
+			senders[req.Name] = make([]chan<- Response, 0)
 		}
 
 		for _, dependency := range req.Dependencies {
 			//TODO: figure out case where dependency is not present
-			ch := make(chan Result)
+			ch := make(chan Response)
 			listeners[req.Name] = append(listeners[req.Name], ch)
 			senders[dependency] = append(senders[dependency], ch)
 		}
@@ -55,13 +60,13 @@ func createListenersAndSenders(requests []Request) (map[string][]<-chan Result, 
 	return listeners, senders
 }
 
-func merge(cs []<-chan Result) <-chan Result {
+func merge(cs []<-chan Response) <-chan Response {
 	var wg sync.WaitGroup
-	out := make(chan Result)
+	out := make(chan Response)
 
 	// Start an output goroutine for each input channel in cs.  output
 	// copies values from c to out until c is closed, then calls wg.Done.
-	output := func(c <-chan Result) {
+	output := func(c <-chan Response) {
 		for n := range c {
 			out <- n
 		}

@@ -1,6 +1,9 @@
 package models
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 //Request that needs to be batched
 type Request struct {
@@ -15,23 +18,32 @@ type Request struct {
 	Weight       int
 }
 
-//Result of request
-type Result struct {
-	Name                string
-	Body                string
-	DependenciesResults []Result
-}
-
 //Execute request
-func (request Request) Execute(dependencies []<-chan Result, dependents []chan<- Result) <-chan Result {
-	resultChannel := make(chan Result)
+func (request Request) Execute(dependencies []<-chan Response, dependents []chan<- Response) <-chan Response {
+	resultChannel := make(chan Response)
 	go func() {
-		dependenciesResults := make([]Result, 0, len(dependencies))
+		var dependencyError *DependencyError
+		var result Response
+		dependenciesResults := make([]Response, 0, len(dependencies))
+
 		for _, dependency := range dependencies {
-			dependenciesResults = append(dependenciesResults, <-dependency)
+			depResponse := <-dependency
+			depResult, err := depResponse.ProvideResult()
+			if err != nil {
+				dependencyError = &DependencyError{Name: request.Name, DependencyName: depResult.Name}
+			}
+			dependenciesResults = append(dependenciesResults, depResult)
 		}
 
-		result := Result{Name: request.Name, Body: fmt.Sprintf("I am a result of %s", request.Name), DependenciesResults: dependenciesResults}
+		if dependencyError != nil {
+			result = *dependencyError
+		} else {
+			if request.Name == "test3" {
+				result = RequestError{Name: request.Name, Err: errors.New("Http Error")}
+			} else {
+				result = Result{Name: request.Name, Body: fmt.Sprintf("Body of %s", request.Name)}
+			}
+		}
 
 		for _, dependent := range dependents {
 			dependent <- result
