@@ -22,26 +22,17 @@ type Request struct {
 func (request Request) Execute(dependencies []<-chan Response, dependents []chan<- Response) <-chan Response {
 	resultChannel := make(chan Response)
 	go func() {
-		var dependencyError *DependencyError
 		var result Response
-		dependenciesResults := make([]Response, 0, len(dependencies))
 
-		for _, dependency := range dependencies {
-			depResponse := <-dependency
-			depResult, err := depResponse.ProvideResult()
-			if err != nil {
-				dependencyError = &DependencyError{Name: request.Name, DependencyName: depResult.Name}
-			}
-			dependenciesResults = append(dependenciesResults, depResult)
-		}
+		_, dependencyError := getDependenciesResults(dependencies, request.Name)
 
 		if dependencyError != nil {
-			result = *dependencyError
+			result = dependencyError
 		} else {
 			if request.Name == "test3" {
-				result = RequestError{Name: request.Name, Err: errors.New("Http Error")}
+				result = &RequestError{Name: request.Name, Err: errors.New("Http Error")}
 			} else {
-				result = Result{Name: request.Name, Body: fmt.Sprintf("Body of %s", request.Name)}
+				result = &Result{Name: request.Name, Body: fmt.Sprintf("Body of %s", request.Name)}
 			}
 		}
 
@@ -56,4 +47,16 @@ func (request Request) Execute(dependencies []<-chan Response, dependents []chan
 	}()
 
 	return resultChannel
+}
+
+func getDependenciesResults(dependencies []<-chan Response, name string) (results []Response, dependencyError *DependencyError) {
+	for _, dependency := range dependencies {
+		depResponse := <-dependency
+		depResult, err := depResponse.ProvideResult()
+		if err != nil {
+			dependencyError = &DependencyError{Name: name, DependencyName: depResult.Name}
+		}
+		results = append(results, depResult)
+	}
+	return
 }
