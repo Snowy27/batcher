@@ -15,6 +15,10 @@ func HandleBatch(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if err := payload.CheckForCircularDependencies(); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	results := payload.Execute()
 	c.JSON(200, results)
 }

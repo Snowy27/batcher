@@ -1,7 +1,6 @@
 package models
 
 import (
-	"errors"
 	"fmt"
 )
 
@@ -29,11 +28,7 @@ func (request Request) Execute(dependencies []<-chan Response, dependents []chan
 		if dependencyError != nil {
 			result = dependencyError
 		} else {
-			if request.Name == "test3" {
-				result = &RequestError{Name: request.Name, Err: errors.New("Http Error")}
-			} else {
-				result = &Result{Name: request.Name, Body: fmt.Sprintf("Body of %s", request.Name)}
-			}
+			result = &Result{Name: request.Name, Body: fmt.Sprintf("Body of %s", request.Name)}
 		}
 
 		for _, dependent := range dependents {

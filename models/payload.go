@@ -1,12 +1,24 @@
 package models
 
 import (
+	"errors"
 	"sync"
 )
 
 //Payload that contains all requests
 type Payload struct {
 	Requests []Request `json:"requests" binding:"required,gt=0,dive"`
+}
+
+//CheckForCircularDependencies verifies that there is no circular dependencies in the payload
+func (payload *Payload) CheckForCircularDependencies() error {
+	graph := NewDependenciesGraph(payload.Requests)
+
+	if graph.CheckForCircularDependencies() {
+		return errors.New("The payload has circular dependecies")
+	}
+
+	return nil
 }
 
 //Execute the batched requests
