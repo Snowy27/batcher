@@ -18,15 +18,15 @@ type Request struct {
 }
 
 //Execute request
-func (request Request) Execute(dependencies []<-chan Response, dependents []chan<- Response) <-chan Response {
-	resultChannel := make(chan Response)
+func (request Request) Execute(dependencies []<-chan *Result, dependents []chan<- *Result) <-chan *Result {
+	resultChannel := make(chan *Result)
 	go func() {
-		var result Response
+		var result *Result
 
 		_, dependencyError := getDependenciesResults(dependencies, request.Name)
 
 		if dependencyError != nil {
-			result = dependencyError
+			result = &Result{Name: request.Name, Error: dependencyError}
 		} else {
 			result = &Result{Name: request.Name, Body: fmt.Sprintf("Body of %s", request.Name)}
 		}
@@ -44,14 +44,13 @@ func (request Request) Execute(dependencies []<-chan Response, dependents []chan
 	return resultChannel
 }
 
-func getDependenciesResults(dependencies []<-chan Response, name string) (results []Response, dependencyError *DependencyError) {
+func getDependenciesResults(dependencies []<-chan *Result, name string) (results []*Result, dependencyError *DependencyError) {
 	for _, dependency := range dependencies {
-		depResponse := <-dependency
-		depResult, err := depResponse.ProvideResult()
-		if err != nil {
-			dependencyError = &DependencyError{Name: name, DependencyName: depResult.Name}
+		result := <-dependency
+		if result.Error != nil {
+			dependencyError = NewDependencyError(result.Name)
 		}
-		results = append(results, depResult)
+		results = append(results, result)
 	}
 	return
 }
