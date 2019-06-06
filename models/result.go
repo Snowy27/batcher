@@ -4,10 +4,10 @@ import "fmt"
 
 //Result of request
 type Result struct {
-	Name  string
-	Body  map[string]interface{}
-	Code  int
-	Error error
+	Name       string
+	Body       map[string]interface{}
+	StatusCode int
+	Error      error
 }
 
 //RequestError error of particular request

@@ -3,8 +3,8 @@ package models
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"time"
 )
@@ -19,7 +19,6 @@ type Request struct {
 	Concurrency  uint8                  `json:"concurrency"`
 	Retries      uint8                  `json:"retries"`
 	Timeout      uint                   `json:"timeout"`
-	Weight       int
 }
 
 //Execute request
@@ -66,31 +65,16 @@ func (request Request) performAPICall() *Result {
 		resp, err = request.performPut(client)
 	case "DELETE":
 		resp, err = request.performDelete(client)
-	default:
-		err = errors.New("Invalid method")
 	}
 
 	defer resp.Body.Close()
 
 	if err != nil {
-		return &Result{Name: request.Name, Error: err}
+		return &Result{Name: request.Name, Error: err, StatusCode: 500}
 	}
 
-	if resp.StatusCode > 299 {
-		//TODO add an actual error message
-		return &Result{Name: request.Name, Error: NewRequestError("Something is wrong with request"), Code: resp.StatusCode}
-	}
+	return request.handleResponse(resp)
 
-	var result map[string]interface{}
-
-	err = json.NewDecoder(resp.Body).Decode(&result)
-
-	if err != nil {
-		return &Result{Name: request.Name, Error: err}
-	}
-
-	fmt.Printf("Finishing request %s\n", request.Name)
-	return &Result{Name: request.Name, Body: result, Code: resp.StatusCode}
 }
 
 func (request Request) performGet(client http.Client) (*http.Response, error) {
@@ -135,6 +119,28 @@ func (request Request) performDelete(client http.Client) (*http.Response, error)
 	}
 
 	return client.Do(req)
+}
+
+func (request Request) handleResponse(resp *http.Response) *Result {
+
+	if resp.StatusCode > 299 {
+		errorMessage, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return &Result{Name: request.Name, Error: NewRequestError("Unable to get response"), StatusCode: resp.StatusCode}
+		}
+		return &Result{Name: request.Name, Error: NewRequestError(string(errorMessage)), StatusCode: resp.StatusCode}
+	}
+
+	var result map[string]interface{}
+
+	err := json.NewDecoder(resp.Body).Decode(&result)
+
+	if err != nil {
+		return &Result{Name: request.Name, Error: err, StatusCode: 500}
+	}
+
+	fmt.Printf("Finishing request %s\n", request.Name)
+	return &Result{Name: request.Name, Body: result, StatusCode: resp.StatusCode}
 }
 
 func getDependenciesResults(dependencies []<-chan *Result) (results []*Result, dependencyError *DependencyError) {

@@ -11,7 +11,7 @@ import (
 func InitRouter() *gin.Engine {
 	router := gin.Default()
 	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
-		v.RegisterValidation("requiredwhenputorpost", api.BodyIsRequiredWhenPostOrPut)
+		v.RegisterValidation("requiredwhenputorpost", api.RequiredWhenPutOrPost)
 	}
 	gin.SetMode(gin.ReleaseMode)
 	router.POST("/batch/", api.HandleBatch)

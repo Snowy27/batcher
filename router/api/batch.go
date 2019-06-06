@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 	"reflect"
 
@@ -26,17 +25,16 @@ func HandleBatch(c *gin.Context) {
 	c.JSON(200, results)
 }
 
-//BodyIsRequiredWhenPostOrPut contains custom validation for body in PUT and POST requests
-func BodyIsRequiredWhenPostOrPut(
+//RequiredWhenPutOrPost contains custom validation for field required in PUT and POST requests
+func RequiredWhenPutOrPost(
 	v *validator.Validate, topStruct reflect.Value, currentStructOrField reflect.Value,
 	field reflect.Value, fieldType reflect.Type, fieldKind reflect.Kind, param string,
 ) bool {
-	b := currentStructOrField.Interface().(models.Request)
 	if request, ok := currentStructOrField.Interface().(models.Request); ok {
-		if (request.Method == "POST" || request.Method == "PUT") && request.Body == nil {
+		value := field.Interface().(map[string]interface{})
+		if (request.Method == "POST" || request.Method == "PUT") && len(value) == 0 {
 			return false
 		}
 	}
-	fmt.Println(b)
 	return true
 }
