@@ -36,9 +36,9 @@ func (payload *Payload) Execute() map[string]interface{} {
 
 	for result := range mergedResultsChannel {
 		if result.Error != nil {
-			responses[result.Name] = map[string]string{"Error": result.Error.Error()}
+			responses[result.Name] = map[string]interface{}{"Error": result.Error.Error(), "Code": result.Code}
 		} else {
-			responses[result.Name] = map[string]string{"Result": result.Body}
+			responses[result.Name] = map[string]interface{}{"Code": result.Code, "Response": result.Body}
 		}
 	}
 

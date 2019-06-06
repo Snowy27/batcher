@@ -5,7 +5,8 @@ import "fmt"
 //Result of request
 type Result struct {
 	Name  string
-	Body  string
+	Body  map[string]interface{}
+	Code  int
 	Error error
 }
 
